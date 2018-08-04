@@ -357,6 +357,7 @@ class MainWindow(tk.Frame, object):
         submenu31.add_command(label="AM", command=lambda *args: self.defaultmodulation(2))
         submenu31.add_command(label="CW", command=lambda *args: self.defaultmodulation(3))
         submenu31.add_command(label="NFM", command=lambda *args: self.defaultmodulation(4))
+        submenu31.add_command(label="IQ", command=lambda *args: self.defaultmodulation(5))
         submenu3.add_cascade(label='Default', menu=submenu31, underline=0)
         submenu4 = Menu(filemenu, tearoff=0)
         submenu41 = Menu(filemenu, tearoff=0)
@@ -420,7 +421,7 @@ class MainWindow(tk.Frame, object):
 
         self.TCombobox1 = ttk.Combobox(root, state="readonly")  # modulation combobox
         self.TCombobox1.place(relx=0.65, rely=0.02, relheight=0.05, relwidth=0.055)
-        self.TCombobox1.configure(font="TkTextFont", values=["USB", "LSB", "AM", "CW", "NFM"])
+        self.TCombobox1.configure(font="TkTextFont", values=["USB", "LSB", "AM", "CW", "NFM", "IQ"])
         self.TCombobox1.current(defaultmodulation)
         self.TCombobox1.bind("<<ComboboxSelected>>", self.modulationchoice)
 
@@ -581,7 +582,7 @@ bug, reports and features request : ounaid@gmail.com
             u.write("Default Window Geometry [width]x[height]+[left position]+[top position]\n%s\n" % root.geometry())
             u.write("Default Low Pass Filter (in Hz)\n%s\n" % defaultlowpassvalue)
             u.write("Default High Pass Filter (in Hz)\n%s\n" % defaulthighpassvalue)
-            u.write("Default Modulation (0:USB 1:LSB 2:AM 3:CW 4:NFM)\n%s\n" % defaultmodulation)
+            u.write("Default Modulation (0:USB 1:LSB 2:AM 3:CW 4:NFM 5:IQ)\n%s\n" % defaultmodulation)
             u.write("Default AGC/MGC (1:AGC 0:MGC)\n%s\n" % autoagcactive)
             u.write("Default AGC Hang (0/1)\n%s\n" % hang)
             u.write("Default gain (in MGC mode)\n%s\n" % managcgain)

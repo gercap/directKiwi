@@ -309,7 +309,7 @@ class KiwiRecorder(KiwiSDRSoundStream):
     def __init__(self, options):
         super(KiwiRecorder, self).__init__()
         self._options = options
-        freq = float(options[5])
+        freq = float(options.frequency)
         # print "%s:%s freq=%d" % (options.server_host, options.server_port, freq)
         self._freq = freq
         self._start_ts = None
@@ -319,11 +319,11 @@ class KiwiRecorder(KiwiSDRSoundStream):
             self._nf_array.insert(x, 0)
         self._nf_samples = 0
         self._nf_index = 0
-        self._num_channels = 2 if options[7] == 'iq' else 1
+        self._num_channels = 2 if options.modulation == 'iq' else 1
         self._last_gps = dict(zip(['last_gps_solution', 'dummy', 'gpssec', 'gpsnsec'], [0, 0, 0, 0]))
 
         try:
-            self.connect(str(self._options[1]), int(self._options[3]))
+            self.connect(str(self._options.server_host), int(self._options.server_port))
         except:
             print "Failed to connect, sleeping and reconnecting"
             time.sleep(15)
@@ -342,25 +342,135 @@ class KiwiRecorder(KiwiSDRSoundStream):
 
 
     def _setup_rx_params(self):
-        mod = self._options[7]
-        lp_cut = int(self._options[9])
-        hp_cut = int(self._options[11])
-        if mod == 'am':
+        mod = self._options.modulation
+        lp_cut = int(self._options.lp_cut)
+        hp_cut = int(self._options.hp_cut)
+        if mod == 'lsb':
+            lp_cut = int(-self._options.hp_cut)
+            hp_cut = int(-self._options.lp_cut)
+        elif mod == 'am':
             # For AM, ignore the low pass filter cutoff
             lp_cut = -hp_cut
+
+        print '-->',  mod, lp_cut, hp_cut, self._freq
+        
         self.set_mod(mod, lp_cut, hp_cut, self._freq)
-        if self._options[13] != "1":
-            self.set_agc(on=False, gain=int(self._options[14]))
+        if self._options.agc_gain != None:
+            self.set_agc(on=False, gain=int(self._options.agc_gain))
             # agc=%d hang=%d thresh=%d slope=%d decay=%d manGain=%d' % (on, hang, thresh, slope, decay, gain))
         else:
-            self.set_agc(on=True, hang=int(self._options[15]), thresh=int(self._options[16]),
-                         slope=int(self._options[17]), decay=int(self._options[18]))
+            self.set_agc(on=True)
         self.set_inactivity_timeout(0)
         self.set_name('directKiwi_user')
         self.set_geo('unknown')
 
 if __name__ == '__main__':
 
-    KiwiRecorder(sys.argv[1:])
+    parser = OptionParser()
+    parser.add_option('--log-level', '--log_level', type='choice',
+                      dest='log_level', default='warn',
+                      choices=['debug', 'info', 'warn', 'error', 'critical'],
+                      help='Log level: debug|info|warn|error|critical')
+    parser.add_option('-q', '--quiet',
+                      dest='quiet',
+                      default=False,
+                      action='store_true',
+                      help='Don\'t print progress messages')
+    parser.add_option('-k', '--socket-timeout', '--socket_timeout',
+                      dest='socket_timeout', type='int', default=10,
+                      help='Timeout(sec) for sockets')
+    parser.add_option('-s', '--server-host',
+                      dest='server_host', type='string',
+                      default='localhost', help='Server host (can be a comma-delimited list)')
+    parser.add_option('-p', '--server-port',
+                      dest='server_port', type='string',
+                      default=8073, help='Server port, default 8073 (can be a comma delimited list)')
+    parser.add_option('--pw', '--password',
+                      dest='password', type='string', default='',
+                      help='Kiwi login password (if required, can be a comma delimited list)')
+    parser.add_option('-u', '--user',
+                      dest='user', type='string', default='kiwirecorder.py',
+                      help='Kiwi connection user name')
+    parser.add_option('-f', '--freq',
+                      dest='frequency',
+                      type='string', default=1000,
+                      help='Frequency to tune to, in kHz (can be a comma-separated list)')
+    parser.add_option('-m', '--modulation',
+                      dest='modulation',
+                      type='string', default='lsb',
+                      help='Modulation; one of am, lsb, usb, cw, nbfm, iq')
+    parser.add_option('--ncomp', '--no_compression',
+                      dest='compression',
+                      default=True,
+                      action='store_false',
+                      help='Don\'t use audio compression')
+    parser.add_option('--dt-sec',
+                      dest='dt',
+                      type='int', default=0,
+                      help='Start a new file when mod(sec_of_day,dt) == 0')
+    parser.add_option('-L', '--lp-cutoff',
+                      dest='lp_cut',
+                      type='float', default=100,
+                      help='Low-pass cutoff frequency, in Hz')
+    parser.add_option('-H', '--hp-cutoff',
+                      dest='hp_cut',
+                      type='float', default=2600,
+                      help='Low-pass cutoff frequency, in Hz')
+    parser.add_option('--fn', '--filename',
+                      dest='filename',
+                      type='string', default='',
+                      help='Use fixed filename instead of generated filenames (optional station ID(s) will apply)')
+    parser.add_option('--station',
+                      dest='station',
+                      type='string', default=None,
+                      help='Station ID to be appended (can be a comma-separated list)')
+    parser.add_option('-d', '--dir',
+                      dest='dir',
+                      type='string', default=None,
+                      help='Optional destination directory for files')
+    parser.add_option('-w', '--kiwi-wav',
+                      dest='is_kiwi_wav',
+                      default=False,
+                      action='store_true',
+                      help='Use wav file format including KIWI header (GPS time-stamps) only for IQ mode')
+    parser.add_option('--kiwi-tdoa',
+                      dest='is_kiwi_tdoa',
+                      default=False,
+                      action='store_true',
+                      help='Used when called by Kiwi TDoA extension')
+    parser.add_option('--tlimit', '--time-limit',
+                      dest='tlimit',
+                      type='float', default=None,
+                      help='Record time limit in seconds')
+    parser.add_option('-T', '--threshold',
+                      dest='thresh',
+                      type='float', default=None,
+                      help='Squelch threshold, in dB.')
+    parser.add_option('-g', '--agc-gain',
+                      dest='agc_gain',
+                      type='string',
+                      default=None,
+                      help='AGC gain; if set, AGC is turned off (can be a comma-separated list)')
+    parser.add_option('-z', '--zoom',
+                      dest='zoom', type='int', default=0,
+                      help='Zoom level 0-14')
+    parser.add_option('--wf',
+                      dest='waterfall',
+                      default=False,
+                      action='store_true',
+                      help='Process waterfall data instead of audio')
+    parser.add_option('--snd',
+                      dest='sound',
+                      default=False,
+                      action='store_true',
+                      help='Also process sound data when in waterfall mode')
+
+    parser.add_option('-t', '--local-port',
+                      dest='local_server_port', type='int',
+                      default=10001, help='Local Server port, default 10001')
+
+    (options, unused_args) = parser.parse_args()
+
+    KiwiRecorder(options)
 
 # EOF
