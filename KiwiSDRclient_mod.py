@@ -288,8 +288,8 @@ class KiwiSDRSoundStream(KiwiSDRStreamBase):
         self._set_mod('am', 100, 2800, 4625.0)
         self._set_agc(True)
 
-    def open(self):
-        self._set_auth('kiwi', '')
+    def open(self, user, password):
+        self._set_auth(user, password)
 
     def close(self):
         try:
@@ -328,7 +328,7 @@ class KiwiRecorder(KiwiSDRSoundStream):
             print "Failed to connect, sleeping and reconnecting"
             time.sleep(15)
         try:
-            self.open()
+            self.open(self._options.user, self._options.password)
             while True:
                 self.run()
         except KiwiTooBusyError:
@@ -352,7 +352,7 @@ class KiwiRecorder(KiwiSDRSoundStream):
             # For AM, ignore the low pass filter cutoff
             lp_cut = -hp_cut
 
-        print '-->',  mod, lp_cut, hp_cut, self._freq
+        print 'modulation settings -->',  mod, lp_cut, hp_cut, self._freq
         
         self.set_mod(mod, lp_cut, hp_cut, self._freq)
         if self._options.agc_gain != None:
@@ -361,7 +361,7 @@ class KiwiRecorder(KiwiSDRSoundStream):
         else:
             self.set_agc(on=True)
         self.set_inactivity_timeout(0)
-        self.set_name('directKiwi_user')
+        self.set_name('directKiwi_mod_user')
         self.set_geo('unknown')
 
 if __name__ == '__main__':
@@ -389,8 +389,8 @@ if __name__ == '__main__':
                       dest='password', type='string', default='',
                       help='Kiwi login password (if required, can be a comma delimited list)')
     parser.add_option('-u', '--user',
-                      dest='user', type='string', default='kiwirecorder.py',
-                      help='Kiwi connection user name')
+                      dest='user', type='string', default='kiwi',
+                      help='Kiwi connection user name - kiwi or admin')
     parser.add_option('-f', '--freq',
                       dest='frequency',
                       type='string', default=1000,
