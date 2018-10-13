@@ -4,7 +4,8 @@
 # Adapted to work with directKiwi.py GUI code
 # Mainly a big cleanup of unnecessary stuff + adding the audio socket instead of file writing to disk
 
-import array, logging, socket, struct, sys, time, traceback, numpy, pygame, platform, socket
+import array, logging, socket, struct, sys, time
+import zmq, traceback, numpy, pygame, platform, socket
 import wsclient
 from optparse import OptionParser
 
@@ -154,13 +155,16 @@ class KiwiSDRStreamBase(object):
 class KiwiSDRSoundStream(KiwiSDRStreamBase):
     """KiwiSDR WebSocket stream client: the SND stream."""
 
-    def __init__(self):
+    def __init__(self, zmq_port):
         self._decoder = ImaAdpcmDecoder()
         self._sample_rate = None
         self._version_major = None
         self._version_minor = None
         self._modulation = None
-        self._udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+        self.zmq_context = zmq.Context()
+        self.zmq_socket = self.zmq_context.socket(zmq.PUB)
+        self.zmq_socket.bind("tcp://*:%s" % zmq_port)
 
     def connect(self, host, port):
         # print "connect: %s:%s" % (host, port)
@@ -250,8 +254,7 @@ class KiwiSDRSoundStream(KiwiSDRStreamBase):
             count = len(data) // 2
             data = struct.unpack('>%dh' % count, data)
             samples = [complex(data[i + 0], data[i + 1]) for i in xrange(0, count, 2)]
-            self._udp_socket.sendto(samples, ("127.0.0.1", 10001))
-            
+            self.zmq_socket.send(samples)
 
             self._process_iq_samples(seq, samples, rssi, gps)
             real_samples = numpy.absolute(samples)
@@ -272,8 +275,8 @@ class KiwiSDRSoundStream(KiwiSDRStreamBase):
                     stereo[i][1] = numpy.int16(mono[i]);
                 pygame.mixer.Channel(0).queue(pygame.sndarray.make_sound(stereo))
             else:
-              pygame.mixer.Channel(0).queue(pygame.sndarray.make_sound(numpy.array(samples, numpy.int16)))
-              self._udp_socket.sendto(samples, ("127.0.0.1", 10001))
+                pygame.mixer.Channel(0).queue(pygame.sndarray.make_sound(numpy.array(samples, numpy.int16)))
+                self.zmq_socket.send(samples)
 
     def _on_sample_rate_change(self):
         pass
@@ -307,7 +310,7 @@ class KiwiSDRSoundStream(KiwiSDRStreamBase):
 class KiwiRecorder(KiwiSDRSoundStream):
 
     def __init__(self, options):
-        super(KiwiRecorder, self).__init__()
+        super(KiwiRecorder, self).__init__(options.zmq_port)
         self._options = options
         freq = float(options.frequency)
         # print "%s:%s freq=%d" % (options.server_host, options.server_port, freq)
@@ -352,7 +355,7 @@ class KiwiRecorder(KiwiSDRSoundStream):
             # For AM, ignore the low pass filter cutoff
             lp_cut = -hp_cut
 
-        print 'modulation settings -->',  mod, lp_cut, hp_cut, self._freq
+        print 'modulation settings -->',  mod, 'lp_cut:', lp_cut, 'hp_cut:', hp_cut, 'freq:', self._freq
         
         self.set_mod(mod, lp_cut, hp_cut, self._freq)
         if self._options.agc_gain != None:
@@ -387,7 +390,7 @@ if __name__ == '__main__':
                       default=8073, help='Server port, default 8073 (can be a comma delimited list)')
     parser.add_option('--pw', '--password',
                       dest='password', type='string', default='',
-                      help='Kiwi login password (if required, can be a comma delimited list)')
+                      help='Kiwi login password')
     parser.add_option('-u', '--user',
                       dest='user', type='string', default='kiwi',
                       help='Kiwi connection user name - kiwi or admin')
@@ -468,6 +471,11 @@ if __name__ == '__main__':
     parser.add_option('-t', '--local-port',
                       dest='local_server_port', type='int',
                       default=10001, help='Local Server port, default 10001')
+
+    parser.add_option('--zmq_port',
+                      dest='zmq_port',
+                      type='int', default=5556,
+                      help='ZMQ PUB port')
 
     (options, unused_args) = parser.parse_args()
 
