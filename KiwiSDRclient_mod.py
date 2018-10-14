@@ -155,16 +155,17 @@ class KiwiSDRStreamBase(object):
 class KiwiSDRSoundStream(KiwiSDRStreamBase):
     """KiwiSDR WebSocket stream client: the SND stream."""
 
-    def __init__(self, zmq_port):
+    def __init__(self, options):
         self._decoder = ImaAdpcmDecoder()
         self._sample_rate = None
         self._version_major = None
         self._version_minor = None
         self._modulation = None
+        self._options = options
 
         self.zmq_context = zmq.Context()
         self.zmq_socket = self.zmq_context.socket(zmq.PUB)
-        self.zmq_socket.bind("tcp://*:%s" % zmq_port)
+        self.zmq_socket.bind("tcp://*:%s" % self._options.zmq_port)
 
     def connect(self, host, port):
         # print "connect: %s:%s" % (host, port)
@@ -247,36 +248,41 @@ class KiwiSDRSoundStream(KiwiSDRStreamBase):
         smeter = struct.unpack('>H', body[4:6])[0]
         data = body[6:]
         rssi = (smeter & 0x0FFF) // 10 - 127
-        sys.stdout.write('\rBlock: %08x, RSSI: %-04d' % (seq, rssi))
+
         if self._modulation == 'iq':
             gps = dict(zip(['last_gps_solution', 'dummy', 'gpssec', 'gpsnsec'], struct.unpack('<BBII', data[0:10])))
             data = data[10:]
             count = len(data) // 2
             data = struct.unpack('>%dh' % count, data)
             samples = [complex(data[i + 0], data[i + 1]) for i in xrange(0, count, 2)]
-            self.zmq_socket.send(samples)
+            
+            _frag = body[:6] + numpy.array(samples).tostring()
+            self.zmq_socket.send(_frag)
 
             self._process_iq_samples(seq, samples, rssi, gps)
             real_samples = numpy.absolute(samples)
-            pygame.mixer.Channel(0).queue(pygame.sndarray.make_sound(real_samples))
+            if self._options.playAudio:
+                pygame.mixer.Channel(0).queue(pygame.sndarray.make_sound(real_samples))
         else:
             samples = self._decoder.decode(data)
-            #print samples  # not really necessary but makes a linux box not reading the KiwiSDRclient.py stdout  !?
+            if self._options.playAudio:        
+                # self._process_audio_samples(seq, samples, rssi)
+                # uncomment the previous line for enabling file audio recording (need some modifications in directKiwi.py)
 
-            # self._process_audio_samples(seq, samples, rssi)
-            # uncomment the previous line for enabling file audio recording (need some modifications in directKiwi.py)
+                # the following line is the pygame procedure that transforms the data array into audio sound
+                if platform.system() == "Darwin":  # deal with MacOS X systems
+                    mono = scipy.signal.resample_poly(numpy.int16(samples), 147, 40 * 2)
+                    stereo = numpy.empty([len(mono), 2], dtype=numpy.int16)
+                    for i in range(len(mono)):
+                        stereo[i][0] = numpy.int16(mono[i]);
+                        stereo[i][1] = numpy.int16(mono[i]);
+                    pygame.mixer.Channel(0).queue(pygame.sndarray.make_sound(stereo))
+                else:
+                    pygame.mixer.Channel(0).queue(pygame.sndarray.make_sound(numpy.array(samples, numpy.int16)))
 
-            # the following line is the pygame procedure that transforms the data array into audio sound
-            if platform.system() == "Darwin":  # deal with MacOS X systems
-                mono = scipy.signal.resample_poly(numpy.int16(samples), 147, 40 * 2)
-                stereo = numpy.empty([len(mono), 2], dtype=numpy.int16)
-                for i in range(len(mono)):
-                    stereo[i][0] = numpy.int16(mono[i]);
-                    stereo[i][1] = numpy.int16(mono[i]);
-                pygame.mixer.Channel(0).queue(pygame.sndarray.make_sound(stereo))
-            else:
-                pygame.mixer.Channel(0).queue(pygame.sndarray.make_sound(numpy.array(samples, numpy.int16)))
-                self.zmq_socket.send(samples)
+            _frag = body[:6] + samples.tostring()
+            self.zmq_socket.send(_frag)
+        sys.stdout.write('\r PlayAudio?%s Sample Size: %-04d Block: %08x, RSSI: %-04d' % (self._options.playAudio, len(samples), seq, rssi))
 
     def _on_sample_rate_change(self):
         pass
@@ -310,7 +316,7 @@ class KiwiSDRSoundStream(KiwiSDRStreamBase):
 class KiwiRecorder(KiwiSDRSoundStream):
 
     def __init__(self, options):
-        super(KiwiRecorder, self).__init__(options.zmq_port)
+        super(KiwiRecorder, self).__init__(options)
         self._options = options
         freq = float(options.frequency)
         # print "%s:%s freq=%d" % (options.server_host, options.server_port, freq)
@@ -371,7 +377,7 @@ if __name__ == '__main__':
 
     parser = OptionParser()
     parser.add_option('--log-level', '--log_level', type='choice',
-                      dest='log_level', default='warn',
+                      dest='log_level', default='debug',
                       choices=['debug', 'info', 'warn', 'error', 'critical'],
                       help='Log level: debug|info|warn|error|critical')
     parser.add_option('-q', '--quiet',
@@ -476,6 +482,12 @@ if __name__ == '__main__':
                       dest='zmq_port',
                       type='int', default=5556,
                       help='ZMQ PUB port')
+
+    parser.add_option('-a', '--aud',
+                      dest='playAudio',
+                      default=True,
+                      action='store_false',
+                      help='Play received audio')
 
     (options, unused_args) = parser.parse_args()
 
