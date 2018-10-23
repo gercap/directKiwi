@@ -17,6 +17,8 @@ socket.connect ("tcp://localhost:%s" % port)
 topicfilter = ""
 socket.setsockopt(zmq.SUBSCRIBE, topicfilter)
 
+pygame.mixer.init(12000, 16, 1, 1024)
+
 while True:
     body = socket.recv()
 
