@@ -9,14 +9,6 @@ import zmq, traceback, numpy, pygame, platform, socket
 import wsclient
 from optparse import OptionParser
 
-# below some things to modify in the future
-if platform.system() == "Darwin":  # deal with MacOS X systems
-    import scipy
-    from scipy import signal
-    pygame.init()
-else:
-    pygame.mixer.init(12000, 16, 1, 1024)
-
 # IMAADPCM decoder
 stepSizeTable = (
     7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34,
@@ -490,6 +482,15 @@ if __name__ == '__main__':
                       help='Play received audio')
 
     (options, unused_args) = parser.parse_args()
+
+    if options.playAudio:
+        # below some things to modify in the future
+        if platform.system() == "Darwin":  # deal with MacOS X systems
+            import scipy
+            from scipy import signal
+            pygame.init()
+        else:
+            pygame.mixer.init(12000, 16, 1, 1024)
 
     KiwiRecorder(options)
 
