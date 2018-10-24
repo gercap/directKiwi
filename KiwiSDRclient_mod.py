@@ -365,6 +365,14 @@ class KiwiRecorder(KiwiSDRSoundStream):
         self.set_name('directKiwi_mod_user')
         self.set_geo('unknown')
 
+def get_available_port():
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("",0))
+    s.listen(1)
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
 if __name__ == '__main__':
 
     parser = OptionParser()
@@ -465,16 +473,10 @@ if __name__ == '__main__':
                       default=False,
                       action='store_true',
                       help='Also process sound data when in waterfall mode')
-
-    parser.add_option('-t', '--local-port',
-                      dest='local_server_port', type='int',
-                      default=10001, help='Local Server port, default 10001')
-
     parser.add_option('--zmq_port',
                       dest='zmq_port',
-                      type='int', default=5556,
+                      type='int', default=0,
                       help='ZMQ PUB port')
-
     parser.add_option('-a', '--aud',
                       dest='playAudio',
                       default=True,
@@ -491,6 +493,11 @@ if __name__ == '__main__':
             pygame.init()
         else:
             pygame.mixer.init(12000, 16, 1, 1024)
+
+    if not options.zmq_port:
+        options.zmq_port = get_available_port()
+
+    print("ZMQ server on %d" % (options.zmq_port))
 
     KiwiRecorder(options)
 
