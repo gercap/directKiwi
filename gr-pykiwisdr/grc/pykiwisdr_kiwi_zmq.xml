@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<block>
+  <name>kiwi_zmq</name>
+  <key>pykiwisdr_kiwi_zmq</key>
+  <category>[pykiwisdr]</category>
+  <import>import pykiwisdr</import>
+  <make>pykiwisdr.kiwi_zmq(address=$address, port=$port, zmq_filter=$zmq_filter)</make>
+  <param>
+    <name>ZMQ PUB address</name>
+    <key>address</key>
+    <value>127.0.0.1</value>
+    <type>string</type>
+  </param>
+  <param>
+    <name>ZMQ PUB port</name>
+    <key>port</key>
+    <type>string</type>
+  </param>
+  <param>
+    <name>ZMQ filter string</name>
+    <key>zmq_filter</key>
+    <value>iq</value>
+    <type>string</type>
+  </param>
+  <source>
+    <name>out</name>
+    <type>complex</type>
+  </source>
+</block>
