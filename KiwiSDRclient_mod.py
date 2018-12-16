@@ -9,6 +9,10 @@ import zmq, traceback, numpy, pygame, platform, socket
 import wsclient
 from optparse import OptionParser
 
+import matplotlib.pyplot as plots
+from scipy import signal as sg
+
+
 # IMAADPCM decoder
 stepSizeTable = (
     7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34,
@@ -159,6 +163,9 @@ class KiwiSDRSoundStream(KiwiSDRStreamBase):
         self.zmq_socket = self.zmq_context.socket(zmq.PUB)
         self.zmq_socket.bind("tcp://*:%s" % self._options.zmq_port)
 
+        plots.figure(1)
+        plots.show(False)
+
     def connect(self, host, port):
         # print "connect: %s:%s" % (host, port)
         self._prepare_stream(host, port, 'SND')
@@ -245,11 +252,26 @@ class KiwiSDRSoundStream(KiwiSDRStreamBase):
             gps = dict(zip(['last_gps_solution', 'dummy', 'gpssec', 'gpsnsec'], struct.unpack('<BBII', data[0:10])))
             data = data[10:]
             count = len(data) // 2
-            data = struct.unpack('>%dh' % count, data)
-            samples = [complex(data[i + 0], data[i + 1]) for i in xrange(0, count, 2)]
-            
-            _frag = body[:6] + numpy.array(samples).tostring()
-            self.zmq_socket.send(_frag)
+            _data = struct.unpack('>%dh' % count, data)
+            samples = numpy.array(_data).astype(numpy.float32).view(numpy.complex64)
+
+            """
+            welch_axis, psd_welch = sg.welch(samples, window='flattop', fs = 12000, nperseg= 1024, nfft = 4096)
+            psd_welch_aligned = numpy.fft.fftshift(psd_welch)
+            welch_axis_aligned = numpy.fft.fftshift(welch_axis)
+
+            plots.figure(1)
+            plots.figure(1).clear()
+
+            plots.plot(welch_axis_aligned, 10*numpy.log10(psd_welch_aligned))
+            plots.ylabel('PSD [dB/Hz]')
+            plots.title('FFT method Welch', fontsize=12)
+            plots.pause(0.05)
+            plots.draw()
+            """
+
+            _frag = body[:6] + samples.tostring()
+            self.zmq_socket.send("%s %s" % ('iq', _frag))
 
             self._process_iq_samples(seq, samples, rssi, gps)
             real_samples = numpy.absolute(samples)
@@ -273,7 +295,8 @@ class KiwiSDRSoundStream(KiwiSDRStreamBase):
                     pygame.mixer.Channel(0).queue(pygame.sndarray.make_sound(numpy.array(samples, numpy.int16)))
 
             _frag = body[:6] + samples.tostring()
-            self.zmq_socket.send(_frag)
+            self.zmq_socket.send("%s %s" % ('audio', _frag))
+
         sys.stdout.write('\r PlayAudio?%s Sample Size: %-04d Block: %08x, RSSI: %-04d' % (self._options.playAudio, len(samples), seq, rssi))
 
     def _on_sample_rate_change(self):
@@ -349,7 +372,7 @@ class KiwiRecorder(KiwiSDRSoundStream):
         if mod == 'lsb':
             lp_cut = int(-self._options.hp_cut)
             hp_cut = int(-self._options.lp_cut)
-        elif mod == 'am':
+        elif mod == 'am' or mod == 'iq':
             # For AM, ignore the low pass filter cutoff
             lp_cut = -hp_cut
 
